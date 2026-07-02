@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Continuity Editor</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f1117; color: #e0e0e0; font-family: monospace; overflow: hidden; height: 100vh; }
+
+  #toolbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    background: #1a1d27; border-bottom: 1px solid #2a2d3e;
+    padding: 8px 16px; display: flex; align-items: center; gap: 10px; height: 44px;
+  }
+  #toolbar h1 { font-size: 13px; color: #7c8cf8; letter-spacing: 1px; flex: 1; }
+  #toolbar select, #toolbar input {
+    background: #0f1117; border: 1px solid #2a2d3e; color: #e0e0e0;
+    padding: 4px 8px; border-radius: 4px; font-size: 12px; font-family: monospace;
+  }
+  #toolbar label { font-size: 12px; color: #888; }
+  .btn { background: #7c8cf8; border: none; color: #fff; padding: 4px 12px;
+    border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 12px; }
+  .btn:hover { background: #9aa5fa; }
+  .btn.secondary { background: #2a2d3e; }
+  .btn.secondary:hover { background: #3a3d5e; }
+
+  /* Tabs */
+  #tabs {
+    position: fixed; top: 44px; left: 0; right: 0; z-index: 9;
+    background: #13151f; border-bottom: 1px solid #2a2d3e;
+    display: flex; height: 36px;
+  }
+  .tab {
+    padding: 0 20px; display: flex; align-items: center; cursor: pointer;
+    font-size: 12px; color: #666; border-bottom: 2px solid transparent;
+    transition: color 0.15s;
+  }
+  .tab:hover { color: #aaa; }
+  .tab.active { color: #7c8cf8; border-bottom-color: #7c8cf8; }
+  .tab-badge {
+    margin-left: 6px; background: #f87171; color: #fff;
+    border-radius: 10px; padding: 1px 6px; font-size: 10px; line-height: 16px;
+  }
+
+  /* Graph view */
+  #graph-view { position: fixed; top: 80px; left: 0; right: 0; bottom: 160px; }
+  #graph-toolbar {
+    position: fixed; top: 80px; left: 0; right: 0; z-index: 8;
+    background: #13151f; border-bottom: 1px solid #1e2030;
+    padding: 6px 16px; display: flex; align-items: center; gap: 10px; height: 36px;
+  }
+  #svg-container { position: fixed; top: 116px; left: 0; right: 0; bottom: 160px; overflow: hidden; }
+
+  .legend { position: fixed; top: 126px; right: 16px; background: #1a1d27cc;
+    border: 1px solid #2a2d3e; border-radius: 6px; padding: 10px 14px; font-size: 11px; z-index: 8; }
+  .legend-item { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Info panel */
+  #info {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+    background: #1a1d27; border-top: 1px solid #2a2d3e;
+    padding: 10px 16px; font-size: 12px; height: 160px; overflow-y: auto;
+  }
+  #info h2 { color: #7c8cf8; margin-bottom: 6px; font-size: 13px; }
+  #info .attr { display: inline-block; margin: 2px 4px; background: #0f1117;
+    border: 1px solid #2a2d3e; border-radius: 3px; padding: 2px 6px; }
+  #info .attr span { color: #7c8cf8; }
+
+  /* D3 styles */
+  .node circle { stroke-width: 2; cursor: pointer; }
+  .node circle:hover { stroke-width: 3; filter: brightness(1.3); }
+  .node text { font-size: 11px; fill: #ccc; pointer-events: none;
+    text-shadow: 0 0 4px #000, 0 0 4px #000; }
+  .node.selected circle { stroke: #fff !important; stroke-width: 3; }
+  .link { fill: none; }
+  .link.highlighted { stroke: #7c8cf8 !important; stroke-opacity: 1 !important; stroke-width: 2 !important; }
+
+  /* Contradictions view */
+  #contradictions-view {
+    position: fixed; top: 80px; left: 0; right: 0; bottom: 0;
+    overflow-y: auto; padding: 16px;
+    display: none;
+  }
+
+  /* Timeline view */
+  #timeline-view {
+    position: fixed; top: 80px; left: 0; right: 0; bottom: 0;
+    overflow-y: auto; padding: 24px 0;
+    display: none;
+  }
+  #timeline-loading {
+    text-align: center; color: #555; font-size: 13px; margin-top: 60px;
+  }
+  #timeline-loading .spinner {
+    display: inline-block; width: 18px; height: 18px;
+    border: 2px solid #2a2d3e; border-top-color: #7c8cf8;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    vertical-align: middle; margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .tl-wrap { max-width: 700px; margin: 0 auto; padding: 0 24px; position: relative; }
+  .tl-wrap::before {
+    content: ""; position: absolute; left: calc(24px + 32px); top: 0; bottom: 0;
+    width: 2px; background: #2a2d3e;
+  }
+  .tl-event {
+    display: flex; gap: 16px; margin-bottom: 6px; position: relative;
+  }
+  .tl-chapter-badge {
+    flex-shrink: 0; width: 64px; text-align: right;
+    font-size: 10px; color: #555; padding-top: 10px; line-height: 1.3;
+    font-family: monospace;
+  }
+  .tl-dot-col {
+    flex-shrink: 0; width: 18px; display: flex; flex-direction: column;
+    align-items: center; padding-top: 10px;
+  }
+  .tl-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid; flex-shrink: 0;
+    z-index: 1; background: #0f1117;
+  }
+  .tl-card {
+    flex: 1; background: #1a1d27; border: 1px solid #2a2d3e;
+    border-radius: 6px; padding: 10px 14px; font-size: 12px;
+    margin-bottom: 6px;
+  }
+  .tl-desc { color: #e0e0e0; line-height: 1.5; }
+  .tl-meta { margin-top: 5px; display: flex; gap: 10px; align-items: center; }
+  .tl-date { font-size: 11px; color: #7c8cf8; }
+  .tl-conf-bar {
+    height: 3px; border-radius: 2px; background: #2a2d3e;
+    width: 80px; flex-shrink: 0; overflow: hidden;
+  }
+  .tl-conf-fill { height: 100%; border-radius: 2px; background: #34d399; }
+  .tl-conf-label { font-size: 10px; color: #444; }
+
+  .tl-gap {
+    display: flex; gap: 16px; margin-bottom: 6px; align-items: flex-start;
+  }
+  .tl-gap-spacer { flex-shrink: 0; width: 64px; }
+  .tl-gap-dot-col {
+    flex-shrink: 0; width: 18px; display: flex; flex-direction: column;
+    align-items: center; padding-top: 8px;
+  }
+  .tl-gap-icon {
+    width: 12px; height: 12px; background: #f59e0b;
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+    z-index: 1;
+  }
+  .tl-gap-card {
+    flex: 1; background: #1a1d271a; border: 1px solid #f59e0b44;
+    border-left: 3px solid #f59e0b; border-radius: 6px;
+    padding: 8px 14px; font-size: 11px; color: #f59e0b; margin-bottom: 6px;
+    line-height: 1.5;
+  }
+  .tl-gap-label {
+    font-size: 10px; color: #f59e0b; letter-spacing: 1px;
+    font-weight: bold; margin-bottom: 2px;
+  }
+
+  .tl-stats {
+    max-width: 700px; margin: 0 auto 20px; padding: 0 24px;
+    font-size: 11px; color: #444; display: flex; gap: 16px;
+  }
+  .c-card {
+    background: #1a1d27; border: 1px solid #2a2d3e; border-radius: 6px;
+    padding: 12px 16px; margin-bottom: 10px; display: flex; gap: 12px; align-items: flex-start;
+  }
+  .c-card.HARD { border-left: 3px solid #f87171; }
+  .c-card.SOFT { border-left: 3px solid #f59e0b; }
+  .c-badge {
+    font-size: 10px; font-weight: bold; padding: 2px 7px; border-radius: 3px;
+    flex-shrink: 0; margin-top: 2px;
+  }
+  .c-badge.HARD { background: #f871711a; color: #f87171; border: 1px solid #f87171; }
+  .c-badge.SOFT { background: #f59e0b1a; color: #f59e0b; border: 1px solid #f59e0b; }
+  .c-body { flex: 1; }
+  .c-field { font-size: 13px; color: #e0e0e0; margin-bottom: 4px; }
+  .c-field strong { color: #7c8cf8; }
+  .c-values { font-size: 12px; color: #888; }
+  .c-values .val-a { color: #34d399; }
+  .c-values .val-b { color: #f87171; }
+  .c-meta { font-size: 11px; color: #444; margin-top: 4px; }
+  .c-resolve { background: none; border: 1px solid #2a2d3e; color: #555;
+    border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 11px; font-family: monospace; }
+  .c-resolve:hover { color: #aaa; border-color: #555; }
+  .c-empty { color: #444; font-size: 13px; margin-top: 32px; text-align: center; }
+
+  /* Ingest view */
+  #ingest-view {
+    position: fixed; top: 80px; left: 0; right: 0; bottom: 0;
+    overflow-y: auto; padding: 20px 24px;
+    display: none;
+  }
+  .ingest-layout { display: flex; gap: 20px; max-width: 1100px; margin: 0 auto; align-items: flex-start; }
+  .ingest-left { width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px; }
+  .ingest-right { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+
+  .ing-card {
+    background: #1a1d27; border: 1px solid #2a2d3e; border-radius: 6px; padding: 16px;
+  }
+  .ing-card h3 { font-size: 11px; color: #7c8cf8; letter-spacing: 1px; margin-bottom: 12px; text-transform: uppercase; }
+
+  .ing-field { margin-bottom: 10px; }
+  .ing-field label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; }
+  .ing-field input, .ing-field textarea {
+    width: 100%; background: #0f1117; border: 1px solid #2a2d3e; color: #e0e0e0;
+    padding: 6px 9px; border-radius: 4px; font-size: 12px; font-family: monospace;
+    resize: vertical;
+  }
+  .ing-field input:focus, .ing-field textarea:focus {
+    outline: none; border-color: #7c8cf8;
+  }
+  .ing-field textarea { min-height: 260px; line-height: 1.6; }
+
+  .ing-row { display: flex; gap: 10px; }
+  .ing-row .ing-field { flex: 1; }
+
+  .ing-btn {
+    background: #7c8cf8; border: none; color: #fff; padding: 7px 18px;
+    border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .ing-btn:hover { background: #9aa5fa; }
+  .ing-btn:disabled { background: #2a2d3e; color: #555; cursor: not-allowed; }
+  .ing-btn .spinner {
+    display: none; width: 12px; height: 12px;
+    border: 2px solid #ffffff44; border-top-color: #fff;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+  }
+  .ing-btn.loading .spinner { display: inline-block; }
+
+  .ing-status {
+    font-size: 11px; padding: 6px 10px; border-radius: 4px; margin-top: 8px;
+    display: none;
+  }
+  .ing-status.ok  { background: #34d3991a; border: 1px solid #34d39944; color: #34d399; display: block; }
+  .ing-status.err { background: #f871711a; border: 1px solid #f8717144; color: #f87171; display: block; }
+
+  /* Chapter list */
+  .ch-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+    border-radius: 4px; cursor: default; font-size: 12px;
+    border: 1px solid transparent;
+  }
+  .ch-item:hover { background: #0f1117; border-color: #2a2d3e; }
+  .ch-num { color: #7c8cf8; font-size: 11px; width: 28px; flex-shrink: 0; }
+  .ch-title { flex: 1; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ch-empty { color: #444; font-size: 12px; padding: 8px 0; }
+
+  /* Ingest result */
+  .ing-result { background: #13151f; border: 1px solid #2a2d3e; border-radius: 6px; padding: 14px; }
+  .ing-result h3 { font-size: 11px; color: #7c8cf8; letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase; }
+  .ent-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .ent-tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 3px; border: 1px solid;
+  }
+  .ing-contra { margin-top: 8px; }
+  .ing-contra-item {
+    display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px;
+    background: #0f1117; border-radius: 4px; margin-bottom: 6px; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h1>CONTINUITY EDITOR</h1>
+  <label>Project:</label>
+  <input type="number" id="projectId" value="1" min="1" style="width:60px">
+  <button class="btn" onclick="loadAll()">Load</button>
+</div>
+
+<div id="tabs">
+  <div class="tab active" id="tab-graph" onclick="switchTab('graph')">Graph</div>
+  <div class="tab" id="tab-contradictions" onclick="switchTab('contradictions')">
+    Contradictions <span class="tab-badge" id="c-count" style="display:none">0</span>
+  </div>
+  <div class="tab" id="tab-timeline" onclick="switchTab('timeline')">Timeline</div>
+  <div class="tab" id="tab-ingest" onclick="switchTab('ingest')">+ New / Ingest</div>
+</div>
+
+<!-- Graph view -->
+<div id="graph-view">
+  <div id="graph-toolbar">
+    <label style="font-size:12px;color:#888">Filter:</label>
+    <select id="typeFilter" onchange="applyFilter()" style="background:#0f1117;border:1px solid #2a2d3e;color:#e0e0e0;padding:3px 6px;border-radius:4px;font-size:12px;font-family:monospace">
+      <option value="ALL">All types</option>
+      <option value="CHARACTER">Characters</option>
+      <option value="PLACE">Places</option>
+      <option value="PROP">Props</option>
+      <option value="EVENT">Events</option>
+      <option value="DATE">Dates</option>
+    </select>
+    <label style="font-size:12px;color:#888">Search:</label>
+    <input type="text" id="search" placeholder="name..." oninput="applyFilter()"
+      style="width:120px;background:#0f1117;border:1px solid #2a2d3e;color:#e0e0e0;padding:3px 6px;border-radius:4px;font-size:12px;font-family:monospace">
+    <span id="graph-stats" style="font-size:11px;color:#444;margin-left:8px"></span>
+  </div>
+  <div id="svg-container">
+    <svg id="svg" style="width:100%;height:100%"></svg>
+  </div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<div id="info"><em style="color:#555">Click a node to inspect it</em></div>
+
+<!-- Contradictions view -->
+<div id="contradictions-view">
+  <div id="c-list"></div>
+</div>
+
+<!-- Timeline view -->
+<div id="timeline-view">
+  <div id="timeline-loading" style="display:none">
+    <span class="spinner"></span>Building timeline — this may take a moment…
+  </div>
+  <div id="timeline-content"></div>
+</div>
+
+<!-- Ingest view -->
+<div id="ingest-view">
+  <div class="ingest-layout">
+
+    <!-- LEFT: project panel + chapter queue -->
+    <div class="ingest-left">
+
+      <!-- Step 1: project -->
+      <div class="ing-card" id="ing-project-card">
+        <h3>Step 1 — Project</h3>
+
+        <!-- Create new -->
+        <div id="ing-create-section">
+          <div class="ing-field">
+            <label>Title</label>
+            <input type="text" id="ing-title" placeholder="My Novel">
+          </div>
+          <div class="ing-field">
+            <label>Author</label>
+            <input type="text" id="ing-author" placeholder="optional">
+          </div>
+          <button class="ing-btn" id="ing-create-btn" onclick="createProject()">
+            <span class="spinner"></span>Create Project
+          </button>
+          <div id="ing-create-status" class="ing-status"></div>
+        </div>
+
+        <!-- Divider -->
+        <div style="margin:14px 0;border-top:1px solid #2a2d3e;display:flex;align-items:center;gap:8px">
+          <span style="font-size:10px;color:#444">OR USE EXISTING</span>
+        </div>
+
+        <!-- Load existing -->
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="ing-existing-select" style="flex:1;background:#0f1117;border:1px solid #2a2d3e;color:#e0e0e0;padding:5px 8px;border-radius:4px;font-size:12px;font-family:monospace">
+            <option value="">— pick project —</option>
+          </select>
+          <button class="ing-btn" onclick="loadExistingProject()" style="padding:5px 10px">Load</button>
+        </div>
+      </div>
+
+      <!-- Active project indicator -->
+      <div class="ing-card" id="ing-active-card" style="display:none">
+        <h3>Active Project</h3>
+        <div id="ing-active-name" style="font-size:13px;color:#e0e0e0;margin-bottom:4px"></div>
+        <div id="ing-active-meta" style="font-size:11px;color:#555;margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px">
+          <button class="ing-btn" style="flex:1;justify-content:center;background:#2a2d3e;color:#aaa" onclick="switchTab('graph')">View Graph</button>
+          <button class="ing-btn" style="flex:1;justify-content:center;background:#2a2d3e;color:#aaa" onclick="clearActiveProject()">Clear</button>
+        </div>
+      </div>
+
+      <!-- Chapter queue -->
+      <div class="ing-card">
+        <h3>Chapters Ingested</h3>
+        <div id="ing-ch-list"><div class="ch-empty">No chapters yet.</div></div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: chapter form + results -->
+    <div class="ingest-right">
+
+      <!-- Step 2: chapter form -->
+      <div class="ing-card" id="ing-chapter-card">
+        <h3>Step 2 — Ingest Chapter</h3>
+        <div id="ing-no-project" style="color:#555;font-size:12px;padding:8px 0">
+          Create or load a project first.
+        </div>
+        <div id="ing-chapter-form" style="display:none">
+          <div class="ing-row">
+            <div class="ing-field">
+              <label>Chapter #</label>
+              <input type="number" id="ing-ch-num" value="1" min="1" style="width:80px">
+            </div>
+            <div class="ing-field" style="flex:3">
+              <label>Title <span style="color:#444">(optional)</span></label>
+              <input type="text" id="ing-ch-title" placeholder="e.g. Jonathan Harker's Journal">
+            </div>
+          </div>
+          <div class="ing-field">
+            <label>Chapter Text</label>
+            <textarea id="ing-ch-text" placeholder="Paste the chapter text here…"></textarea>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <button class="ing-btn" id="ing-submit-btn" onclick="ingestChapter()">
+              <span class="spinner"></span>Ingest &amp; Analyse
+            </button>
+            <span id="ing-submit-status" style="font-size:11px;color:#555"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result panel (shown after each ingest) -->
+      <div id="ing-result-panel" style="display:none">
+        <div class="ing-result">
+          <h3>Ingest Result — <span id="ing-res-chname"></span></h3>
+
+          <div style="font-size:11px;color:#666;margin-bottom:8px">Entities extracted</div>
+          <div class="ent-tags" id="ing-res-entities"></div>
+
+          <div id="ing-res-contra-wrap" style="display:none">
+            <div style="font-size:11px;color:#f87171;margin-bottom:6px;margin-top:10px">
+              ⚠ Contradictions detected
+            </div>
+            <div class="ing-contra" id="ing-res-contras"></div>
+          </div>
+
+          <div id="ing-res-no-contra" style="font-size:11px;color:#34d399;margin-top:8px;display:none">
+            ✓ No contradictions found
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const COLORS = {
+  CHARACTER: "#7c8cf8", PLACE: "#34d399", PROP: "#f59e0b",
+  EVENT: "#f87171", DATE: "#a78bfa", OTHER: "#94a3b8",
+};
+
+const BASE = "http://localhost:8000";
+let allNodes = [], allEdges = [], allContradictions = [];
+let simulation, svg, g, linkSel;
+let currentTab = "graph";
+let timelineLoaded = false;
+
+// Build legend
+const legend = document.getElementById("legend");
+Object.entries(COLORS).forEach(([type, color]) => {
+  legend.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${color}"></div>${type}</div>`;
+});
+legend.innerHTML += `<hr style="border-color:#2a2d3e;margin:6px 0">
+  <div class="legend-item"><svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="#5a5cf8" stroke-width="2"/></svg>&nbsp;relationship</div>
+  <div class="legend-item"><svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="#444" stroke-width="1" stroke-dasharray="4,3"/></svg>&nbsp;co-occurrence</div>`;
+
+function switchTab(tab) {
+  currentTab = tab;
+  ["graph","contradictions","timeline","ingest"].forEach(t => {
+    document.getElementById(`tab-${t}`).classList.toggle("active", t === tab);
+  });
+  document.getElementById("graph-view").style.display          = tab === "graph"          ? "" : "none";
+  document.getElementById("info").style.display                = tab === "graph"          ? "" : "none";
+  document.getElementById("legend").style.display              = tab === "graph"          ? "" : "none";
+  document.getElementById("contradictions-view").style.display = tab === "contradictions" ? "block" : "none";
+  document.getElementById("timeline-view").style.display       = tab === "timeline"       ? "block" : "none";
+  document.getElementById("ingest-view").style.display         = tab === "ingest"         ? "block" : "none";
+  if (tab === "timeline" && !timelineLoaded) loadTimeline();
+  if (tab === "ingest") initIngestTab();
+}
+
+async function loadAll() {
+  // Reset timeline state on every fresh load
+  timelineLoaded = false;
+  document.getElementById("timeline-content").innerHTML = "";
+  document.getElementById("timeline-loading").style.display = "none";
+
+  const pid = document.getElementById("projectId").value;
+  try {
+    const [graphR, recallR] = await Promise.all([
+      fetch(`${BASE}/projects/${pid}/graph`),
+      fetch(`${BASE}/projects/${pid}/recall`, { method: "POST", headers: {"Content-Type":"application/json"}, body: "{}" }),
+    ]);
+    if (!graphR.ok) { alert("Project not found"); return; }
+    const graphData = await graphR.json();
+    allNodes = graphData.nodes;
+    allEdges = graphData.edges;
+
+    if (recallR.ok) {
+      const recallData = await recallR.json();
+      allContradictions = recallData.contradictions || [];
+    }
+
+    document.title = `Continuity Editor — Project ${pid}`;
+    renderContradictions();
+    applyFilter();
+
+    const badge = document.getElementById("c-count");
+    const hard = allContradictions.filter(c => c.severity === "HARD").length;
+    if (allContradictions.length > 0) {
+      badge.textContent = allContradictions.length;
+      badge.style.display = "";
+      badge.style.background = hard > 0 ? "#f87171" : "#f59e0b";
+    } else {
+      badge.style.display = "none";
+    }
+  } catch(e) {
+    alert("Could not reach server at " + BASE);
+  }
+}
+
+function renderContradictions() {
+  const list = document.getElementById("c-list");
+  if (allContradictions.length === 0) {
+    list.innerHTML = `<div class="c-empty">No contradictions found for this project.</div>`;
+    return;
+  }
+
+  // Sort: HARD first
+  const sorted = [...allContradictions].sort((a, b) =>
+    (a.severity === "HARD" ? 0 : 1) - (b.severity === "HARD" ? 0 : 1)
+  );
+
+  list.innerHTML = sorted.map(c => `
+    <div class="c-card ${c.severity}" id="ccard-${c.id}">
+      <div class="c-badge ${c.severity}">${c.severity}</div>
+      <div class="c-body">
+        <div class="c-field">Field: <strong>${c.field}</strong></div>
+        <div class="c-values">
+          Ch.${c.chapter_a_number ?? c.chapter_a_id}: <span class="val-a">"${c.value_a}"</span>
+          &nbsp;&rarr;&nbsp;
+          Ch.${c.chapter_b_number ?? c.chapter_b_id}: <span class="val-b">"${c.value_b}"</span>
+        </div>
+        <div class="c-meta">contradiction #${c.id} &nbsp;|&nbsp; entity id: ${c.entity_id ?? "?"}</div>
+      </div>
+      <button class="c-resolve" onclick="resolve(${c.id})">Mark resolved</button>
+    </div>
+  `).join("");
+}
+
+async function resolve(id) {
+  const pid = document.getElementById("projectId").value;
+  const r = await fetch(`${BASE}/projects/${pid}/recall/${id}/resolve`, { method: "PATCH" });
+  if (r.ok) {
+    const card = document.getElementById(`ccard-${id}`);
+    if (card) { card.style.opacity = "0.3"; card.style.pointerEvents = "none"; }
+    allContradictions = allContradictions.filter(c => c.id !== id);
+    const badge = document.getElementById("c-count");
+    if (allContradictions.length === 0) badge.style.display = "none";
+    else badge.textContent = allContradictions.length;
+  }
+}
+
+function applyFilter() {
+  const type = document.getElementById("typeFilter").value;
+  const search = document.getElementById("search").value.toLowerCase();
+
+  let nodes = allNodes.filter(n => {
+    if (type !== "ALL" && n.entity_type !== type) return false;
+    if (search && !n.label.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  const nodeIds = new Set(nodes.map(n => n.id));
+  let edges = allEdges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+
+  document.getElementById("graph-stats").textContent =
+    `${nodes.length} nodes · ${edges.length} edges`;
+
+  render(nodes, edges);
+}
+
+function render(nodes, edges) {
+  const container = document.getElementById("svg-container");
+  const w = container.clientWidth, h = container.clientHeight;
+
+  d3.select("#svg").selectAll("*").remove();
+  svg = d3.select("#svg").attr("width", w).attr("height", h);
+
+  const zoom = d3.zoom().scaleExtent([0.1, 5])
+    .on("zoom", e => g.attr("transform", e.transform));
+  svg.call(zoom);
+
+  g = svg.append("g");
+
+  // Node references (not copies) so D3 can mutate .x/.y on the same objects links point to
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
+  const links = edges.map(e => ({
+    source: nodeMap.get(typeof e.source === "object" ? e.source.id : e.source) ?? e.source,
+    target: nodeMap.get(typeof e.target === "object" ? e.target.id : e.target) ?? e.target,
+    relation: e.relation,
+    weight: e.weight ?? 1.0,
+  }));
+
+  simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(d => d.relation === "co-occurrence" ? 100 : 80))
+    .force("charge", d3.forceManyBody().strength(-350))
+    .force("center", d3.forceCenter(w / 2, h / 2))
+    .force("collide", d3.forceCollide(38));
+
+  linkSel = g.append("g").selectAll("line")
+    .data(links).join("line")
+    .attr("class", "link")
+    .attr("stroke", d => d.relation === "co-occurrence" ? "#333650" : "#5a5cf8")
+    .attr("stroke-opacity", d => d.relation === "co-occurrence" ? 0.5 : 0.9)
+    .attr("stroke-width", d => d.relation === "co-occurrence" ? 1 : 2)
+    .attr("stroke-dasharray", d => d.relation === "co-occurrence" ? "4,3" : null);
+
+  linkSel.append("title").text(d => d.relation);
+
+  const node = g.append("g").selectAll("g")
+    .data(nodes).join("g").attr("class", "node")
+    .call(d3.drag()
+      .on("start", (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on("drag",  (e, d) => { d.fx=e.x; d.fy=e.y; })
+      .on("end",   (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; })
+    )
+    .on("click", (e, d) => showInfo(d));
+
+  const radius = d => d.entity_type === "CHARACTER" ? 14 : 9;
+
+  node.append("circle")
+    .attr("r", radius)
+    .attr("fill", d => COLORS[d.entity_type] || COLORS.OTHER)
+    .attr("stroke", d => d3.color(COLORS[d.entity_type] || COLORS.OTHER).darker(0.6));
+
+  node.append("text")
+    .attr("dy", d => radius(d) + 12)
+    .attr("text-anchor", "middle")
+    .text(d => d.label.length > 20 ? d.label.slice(0,18)+"..." : d.label);
+
+  simulation.on("tick", () => {
+    linkSel
+      .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+    node.attr("transform", d => `translate(${d.x},${d.y})`);
+  });
+}
+
+function showInfo(d) {
+  if (linkSel) linkSel.classed("highlighted", l => l.source.id === d.id || l.target.id === d.id);
+  d3.selectAll(".node").classed("selected", n => n.id === d.id);
+
+  const attrs = Object.entries(d.attributes || {})
+    .filter(([,v]) => v !== null && v !== "" && !(typeof v === "object" && Object.keys(v).length === 0))
+    .map(([k, v]) => `<span class="attr"><span>${k}:</span> ${typeof v === "object" ? JSON.stringify(v) : v}</span>`)
+    .join("");
+
+  // Show related contradictions inline
+  const related = allContradictions.filter(c => c.entity_id === d.id);
+  const cHtml = related.length ? `
+    <div style="margin-top:8px;border-top:1px solid #2a2d3e;padding-top:6px">
+      <span style="color:#f87171;font-size:11px">${related.length} contradiction(s):</span>
+      ${related.map(c => `<span class="attr" style="border-color:${c.severity==='HARD'?'#f87171':'#f59e0b'}">
+        <span style="color:${c.severity==='HARD'?'#f87171':'#f59e0b'}">${c.field}:</span>
+        "${c.value_a}" vs "${c.value_b}"</span>`).join("")}
+    </div>` : "";
+
+  document.getElementById("info").innerHTML =
+    `<h2>${d.label} <small style="color:#555;font-weight:normal">[${d.entity_type}] id=${d.id}</small></h2>
+     <div>${attrs || '<span style="color:#555">no attributes</span>'}</div>${cHtml}`;
+}
+
+const CH_COLORS = ["#7c8cf8","#34d399","#f59e0b","#f87171","#a78bfa","#38bdf8","#fb7185","#4ade80"];
+
+async function loadTimeline() {
+  const pid = document.getElementById("projectId").value;
+  const loading = document.getElementById("timeline-loading");
+  const content = document.getElementById("timeline-content");
+  loading.style.display = "block";
+  content.innerHTML = "";
+
+  try {
+    const r = await fetch(`${BASE}/projects/${pid}/timeline`);
+    if (!r.ok) { loading.textContent = "Failed to load timeline."; return; }
+    const data = await r.json();
+    loading.style.display = "none";
+    timelineLoaded = true;
+    renderTimeline(data);
+  } catch(e) {
+    loading.textContent = "Could not reach server.";
+  }
+}
+
+function renderTimeline(data) {
+  const content = document.getElementById("timeline-content");
+  const events = data.events || [];
+  const gaps = data.gaps_detected || [];
+
+  if (events.length === 0) {
+    content.innerHTML = `<div class="tl-wrap"><div style="color:#555;font-size:13px;margin-top:32px;text-align:center">No timeline events found for this project.</div></div>`;
+    return;
+  }
+
+  // Unique chapter numbers for color assignment
+  const chNums = [...new Set(events.map(e => e.chapter_number))].sort((a,b)=>a-b);
+  const chColor = ch => CH_COLORS[chNums.indexOf(ch) % CH_COLORS.length];
+
+  // Build a gap index: insert gaps before chapter transitions where flagged
+  // Gaps are appended after the last event for simplicity; each gets its own row.
+  let html = `<div class="tl-stats">
+    <span>${events.length} events</span>
+    <span style="color:${gaps.length > 0 ? '#f59e0b' : '#444'}">${gaps.length} gap${gaps.length !== 1 ? 's' : ''} detected</span>
+  </div>`;
+
+  html += `<div class="tl-wrap">`;
+
+  events.forEach((ev, i) => {
+    const color = chColor(ev.chapter_number);
+    const confPct = Math.round((ev.order_confidence ?? 0.5) * 100);
+    const confColor = confPct >= 90 ? "#34d399" : confPct >= 70 ? "#f59e0b" : "#f87171";
+    const dateHtml = ev.raw_date_mention
+      ? `<span class="tl-date">${ev.raw_date_mention}</span>` : "";
+
+    html += `
+      <div class="tl-event">
+        <div class="tl-chapter-badge">Ch.${ev.chapter_number}</div>
+        <div class="tl-dot-col">
+          <div class="tl-dot" style="border-color:${color};background:#0f1117"></div>
+        </div>
+        <div class="tl-card">
+          <div class="tl-desc">${ev.description}</div>
+          <div class="tl-meta">
+            ${dateHtml}
+            <div class="tl-conf-bar" title="Confidence: ${confPct}%">
+              <div class="tl-conf-fill" style="width:${confPct}%;background:${confColor}"></div>
+            </div>
+            <span class="tl-conf-label">${confPct}%</span>
+          </div>
+        </div>
+      </div>`;
+  });
+
+  // Render gaps after the last event
+  gaps.forEach(gap => {
+    html += `
+      <div class="tl-gap">
+        <div class="tl-gap-spacer"></div>
+        <div class="tl-gap-dot-col">
+          <div class="tl-gap-icon"></div>
+        </div>
+        <div class="tl-gap-card">
+          <div class="tl-gap-label">GAP / ANOMALY</div>
+          ${gap}
+        </div>
+      </div>`;
+  });
+
+  html += `</div>`;
+  content.innerHTML = html;
+}
+
+// ── Ingest tab ────────────────────────────────────────────────────────────────
+
+let activeProject = null; // { id, title, author, chapters: [] }
+
+const ENT_COLORS = {
+  CHARACTER: { bg: "#7c8cf81a", border: "#7c8cf8", text: "#7c8cf8" },
+  PLACE:     { bg: "#34d3991a", border: "#34d399", text: "#34d399" },
+  PROP:      { bg: "#f59e0b1a", border: "#f59e0b", text: "#f59e0b" },
+  EVENT:     { bg: "#f871711a", border: "#f87171", text: "#f87171" },
+  DATE:      { bg: "#a78bfa1a", border: "#a78bfa", text: "#a78bfa" },
+  OTHER:     { bg: "#94a3b81a", border: "#94a3b8", text: "#94a3b8" },
+};
+
+async function initIngestTab() {
+  // Populate the existing-projects dropdown
+  try {
+    const r = await fetch(`${BASE}/projects`);
+    if (!r.ok) return;
+    const projects = await r.json();
+    const sel = document.getElementById("ing-existing-select");
+    sel.innerHTML = `<option value="">— pick project —</option>`;
+    projects.forEach(p => {
+      sel.innerHTML += `<option value="${p.id}">${p.title}${p.author ? ' — ' + p.author : ''} (id:${p.id})</option>`;
+    });
+  } catch(e) {}
+}
+
+async function createProject() {
+  const title = document.getElementById("ing-title").value.trim();
+  if (!title) { setStatus("ing-create-status", "err", "Title is required."); return; }
+  const author = document.getElementById("ing-author").value.trim();
+  const btn = document.getElementById("ing-create-btn");
+  btn.classList.add("loading"); btn.disabled = true;
+  setStatus("ing-create-status", "", "");
+  try {
+    const r = await fetch(`${BASE}/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, author: author || null }),
+    });
+    const data = await r.json();
+    if (!r.ok) { setStatus("ing-create-status", "err", data.detail || "Error"); return; }
+    setStatus("ing-create-status", "ok", `Project #${data.id} created.`);
+    setActiveProject(data);
+    await initIngestTab(); // refresh dropdown
+  } catch(e) {
+    setStatus("ing-create-status", "err", "Could not reach server.");
+  } finally {
+    btn.classList.remove("loading"); btn.disabled = false;
+  }
+}
+
+async function loadExistingProject() {
+  const id = document.getElementById("ing-existing-select").value;
+  if (!id) return;
+  try {
+    const [projR, chapR] = await Promise.all([
+      fetch(`${BASE}/projects/${id}`),
+      fetch(`${BASE}/projects/${id}/chapters`),
+    ]);
+    if (!projR.ok) { alert("Project not found"); return; }
+    const proj = await projR.json();
+    const chapters = chapR.ok ? await chapR.json() : [];
+    setActiveProject(proj, chapters);
+  } catch(e) {
+    alert("Could not reach server.");
+  }
+}
+
+function setActiveProject(proj, chapters = []) {
+  activeProject = { ...proj, chapters };
+  document.getElementById("ing-active-card").style.display = "";
+  document.getElementById("ing-active-name").textContent = proj.title + (proj.author ? ` — ${proj.author}` : "");
+  document.getElementById("ing-active-meta").textContent = `Project ID: ${proj.id}`;
+  document.getElementById("ing-no-project").style.display = "none";
+  document.getElementById("ing-chapter-form").style.display = "";
+
+  // Auto-set next chapter number
+  const maxCh = chapters.reduce((m, c) => Math.max(m, c.number), 0);
+  document.getElementById("ing-ch-num").value = maxCh + 1;
+
+  renderChapterList();
+}
+
+function clearActiveProject() {
+  activeProject = null;
+  document.getElementById("ing-active-card").style.display = "none";
+  document.getElementById("ing-no-project").style.display = "";
+  document.getElementById("ing-chapter-form").style.display = "none";
+  document.getElementById("ing-result-panel").style.display = "none";
+  document.getElementById("ing-ch-list").innerHTML = `<div class="ch-empty">No chapters yet.</div>`;
+}
+
+function renderChapterList() {
+  const el = document.getElementById("ing-ch-list");
+  if (!activeProject || activeProject.chapters.length === 0) {
+    el.innerHTML = `<div class="ch-empty">No chapters yet.</div>`; return;
+  }
+  el.innerHTML = activeProject.chapters
+    .sort((a, b) => a.number - b.number)
+    .map(c => `
+      <div class="ch-item">
+        <span class="ch-num">Ch.${c.number}</span>
+        <span class="ch-title">${c.title || '(untitled)'}</span>
+      </div>`)
+    .join("");
+}
+
+async function ingestChapter() {
+  if (!activeProject) return;
+  const num   = parseInt(document.getElementById("ing-ch-num").value);
+  const title = document.getElementById("ing-ch-title").value.trim();
+  const text  = document.getElementById("ing-ch-text").value.trim();
+  if (!text) { setIngStatus("Chapter text is required.", "err"); return; }
+  if (!num || num < 1) { setIngStatus("Chapter number must be ≥ 1.", "err"); return; }
+
+  const btn = document.getElementById("ing-submit-btn");
+  btn.classList.add("loading"); btn.disabled = true;
+  setIngStatus("Ingesting — extracting entities and checking for contradictions…", "");
+
+  try {
+    const r = await fetch(`${BASE}/projects/${activeProject.id}/chapters`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ number: num, title: title || null, text }),
+    });
+    const data = await r.json();
+    if (!r.ok) { setIngStatus(data.detail || "Error ingesting chapter.", "err"); return; }
+
+    // Add to local chapter list and advance counter
+    activeProject.chapters.push({ id: data.chapter_id, number: data.chapter_number, title: title || null });
+    document.getElementById("ing-ch-num").value = data.chapter_number + 1;
+    document.getElementById("ing-ch-title").value = "";
+    document.getElementById("ing-ch-text").value = "";
+    renderChapterList();
+
+    setIngStatus(`Ch.${data.chapter_number} ingested — ${data.entities_extracted.length} entities, ${data.contradictions_found.length} contradiction(s).`, "ok");
+    renderIngestResult(data);
+
+    // Reload graph/contradictions in background so other tabs are fresh
+    timelineLoaded = false;
+    const pid = activeProject.id;
+    document.getElementById("projectId").value = pid;
+    fetch(`${BASE}/projects/${pid}/graph`).then(r => r.json()).then(d => { allNodes = d.nodes; allEdges = d.edges; });
+    fetch(`${BASE}/projects/${pid}/recall`, { method: "POST", headers: {"Content-Type":"application/json"}, body: "{}" })
+      .then(r => r.json()).then(d => {
+        allContradictions = d.contradictions || [];
+        renderContradictions();
+        const badge = document.getElementById("c-count");
+        const hard = allContradictions.filter(c => c.severity === "HARD").length;
+        if (allContradictions.length > 0) {
+          badge.textContent = allContradictions.length; badge.style.display = "";
+          badge.style.background = hard > 0 ? "#f87171" : "#f59e0b";
+        } else { badge.style.display = "none"; }
+      });
+  } catch(e) {
+    setIngStatus("Could not reach server.", "err");
+  } finally {
+    btn.classList.remove("loading"); btn.disabled = false;
+  }
+}
+
+function setIngStatus(msg, type) {
+  const el = document.getElementById("ing-submit-status");
+  el.textContent = msg;
+  el.style.color = type === "err" ? "#f87171" : type === "ok" ? "#34d399" : "#888";
+}
+
+function setStatus(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = "ing-status" + (type ? " " + type : "");
+  el.textContent = msg;
+  if (!type) el.style.display = "none";
+}
+
+function renderIngestResult(data) {
+  document.getElementById("ing-result-panel").style.display = "";
+  document.getElementById("ing-res-chname").textContent =
+    `Ch.${data.chapter_number}${data.chapter_number ? "" : ""}`;
+
+  // Entities
+  const entEl = document.getElementById("ing-res-entities");
+  if (data.entities_extracted.length === 0) {
+    entEl.innerHTML = `<span style="color:#555;font-size:11px">None extracted</span>`;
+  } else {
+    entEl.innerHTML = data.entities_extracted.map(e => {
+      const c = ENT_COLORS[e.entity_type] || ENT_COLORS.OTHER;
+      return `<span class="ent-tag" style="background:${c.bg};border-color:${c.border};color:${c.text}">${e.canonical_name}</span>`;
+    }).join("");
+  }
+
+  // Contradictions
+  const contras = data.contradictions_found;
+  if (contras.length > 0) {
+    document.getElementById("ing-res-contra-wrap").style.display = "";
+    document.getElementById("ing-res-no-contra").style.display = "none";
+    document.getElementById("ing-res-contras").innerHTML = contras.map(c => `
+      <div class="ing-contra-item">
+        <span class="c-badge ${c.severity}" style="flex-shrink:0">${c.severity}</span>
+        <div>
+          <div style="color:#e0e0e0;margin-bottom:2px"><strong style="color:#7c8cf8">${c.field}</strong></div>
+          <div style="color:#888;font-size:11px">
+            Ch.${c.chapter_a_number ?? c.chapter_a_id}: <span style="color:#34d399">"${c.value_a}"</span>
+            &nbsp;→&nbsp;
+            Ch.${c.chapter_b_number ?? c.chapter_b_id}: <span style="color:#f87171">"${c.value_b}"</span>
+          </div>
+        </div>
+      </div>`).join("");
+  } else {
+    document.getElementById("ing-res-contra-wrap").style.display = "none";
+    document.getElementById("ing-res-no-contra").style.display = "";
+  }
+}
+
+window.addEventListener("resize", () => applyFilter());
+
+loadAll();
+</script>
+</body>
+</html>
