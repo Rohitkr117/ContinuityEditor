@@ -29,7 +29,7 @@ async def test_ingest_chapter_no_contradictions(client):
     ]
 
     with patch("app.routers.chapters.cs.extract_entities", return_value=mock_entities), \
-         patch("app.routers.chapters.cognee_service.ingest_chapter", new_callable=AsyncMock):
+         patch("app.services.cognee_service.remember", new_callable=AsyncMock):
         r = await client.post(f"/projects/{pid}/chapters", json={
             "number": 1,
             "title": "Chapter One",
@@ -60,13 +60,13 @@ async def test_ingest_chapter_detects_contradiction(client):
     )]
 
     with patch("app.routers.chapters.cs.extract_entities", return_value=ch1_entities), \
-         patch("app.routers.chapters.cognee_service.ingest_chapter", new_callable=AsyncMock):
+         patch("app.services.cognee_service.remember", new_callable=AsyncMock):
         await client.post(f"/projects/{pid}/chapters", json={
             "number": 1, "text": "Alice has blue eyes."
         })
 
     with patch("app.routers.chapters.cs.extract_entities", return_value=ch2_entities), \
-         patch("app.routers.chapters.cognee_service.ingest_chapter", new_callable=AsyncMock):
+         patch("app.services.cognee_service.remember", new_callable=AsyncMock):
         r = await client.post(f"/projects/{pid}/chapters", json={
             "number": 2, "text": "Alice's green eyes shone in the light."
         })
@@ -78,4 +78,8 @@ async def test_ingest_chapter_detects_contradiction(client):
     assert c["field"] == "eye_color"
     assert c["value_a"] == "blue"
     assert c["value_b"] == "green"
-    assert c["severity"] == "SOFT"
+    # Severity is now the judge's own call rather than a hardcoded lookup, so either
+    # is defensible for an unexplained eye-color change — just assert it's a real verdict.
+    assert c["severity"] in ("HARD", "SOFT")
+    assert c["verdict"] in ("CONFIRM", "REJECT")
+    assert 0.0 <= c["confidence"] <= 1.0

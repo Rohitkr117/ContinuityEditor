@@ -8,11 +8,12 @@ Ingestion pipeline:
   4. Upsert entities; diff attributes against existing graph
   5. Persist contradictions; return full report
 """
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_db, get_llm
-from app.models.db import Project, Chapter, Entity
+from app.models.db import Project, Chapter, Entity, Alias
 from app.models.schemas import ChapterIngest, ChapterIngestResponse, ChapterOut
 from app.services import cognee_service
 from app.services import contradiction as cs
@@ -66,25 +67,63 @@ async def ingest_chapter(
     # resolves_to and collapse "Cole" → "Marcus Cole" without multi-pass DB lookups.
     extracted_entities = await cs.extract_entities(llm, body.text, list(known_entities))
 
-    all_contradictions = []
+    # Per-entity proposer agents are collected here and run concurrently below, then
+    # reviewed together by a single final arbiter call for this chapter ingest.
+    # existing_attrs is snapshotted BEFORE the merge below overwrites entity.attributes,
+    # since the proposer calls are deferred until after this whole loop finishes.
+    check_jobs: list[tuple[Entity, list[Chapter], dict, dict]] = []
+
     for extracted in extracted_entities:
         entity, is_new = await cs.upsert_entity(db, project_id, chapter, extracted)
 
         if not is_new and extracted.attributes:
-            first_chapter = await db.get(Chapter, entity.first_seen_chapter_id)
-            if first_chapter:
-                new_contradictions = await cs.check_and_record(
-                    db, project_id, first_chapter, chapter, entity, extracted.attributes, llm
-                )
-                all_contradictions.extend(new_contradictions)
+            existing_attrs = dict(entity.attributes)
 
-            # Merge attributes: existing wins on most fields (established facts),
-            # but status is always updated to the latest chapter's value so that
-            # a character dying or a prop being destroyed propagates forward.
-            merged = {**extracted.attributes, **entity.attributes}
-            if "status" in extracted.attributes and extracted.attributes["status"] not in (None, "unknown"):
-                merged["status"] = extracted.attributes["status"]
+            # Fetch all previous chapters in this project where this entity appeared (has aliases)
+            prev_chapters_result = await db.execute(
+                select(Chapter)
+                .join(Alias)
+                .where(
+                    Alias.entity_id == entity.id,
+                    Chapter.project_id == project_id,
+                    Chapter.number < chapter.number
+                )
+                .order_by(Chapter.number.asc())
+            )
+            # Use a dict to keep chapters unique by ID (ordered by number)
+            prev_chapters_map = {c.id: c for c in prev_chapters_result.scalars().all()}
+            previous_chapters = list(prev_chapters_map.values())
+
+            if not previous_chapters:
+                first_chapter = await db.get(Chapter, entity.first_seen_chapter_id)
+                previous_chapters = [first_chapter] if first_chapter else []
+
+            if previous_chapters:
+                check_jobs.append((entity, previous_chapters, existing_attrs, extracted.attributes))
+
+            # Merge attributes: new attributes win and propagate forward,
+            # but we deep-merge nested 'relationships' so that other relationships are not lost.
+            merged = {**entity.attributes, **extracted.attributes}
+
+            if "relationships" in entity.attributes and "relationships" in extracted.attributes:
+                existing_rels = entity.attributes["relationships"] or {}
+                extracted_rels = extracted.attributes["relationships"] or {}
+                if isinstance(existing_rels, dict) and isinstance(extracted_rels, dict):
+                    merged["relationships"] = {**existing_rels, **extracted_rels}
+
             entity.attributes = merged
+
+    all_contradictions = []
+    if check_jobs:
+        # Multi-agent proposer stage: one analyst call per entity, run in parallel.
+        proposals = await asyncio.gather(*[
+            cs.propose_for_entity(prev_chapters, chapter, entity, existing_attrs, attrs, llm)
+            for entity, prev_chapters, existing_attrs, attrs in check_jobs
+        ])
+        candidates = [candidate for group in proposals for candidate in group]
+
+        # Final judge stage: one batched call reviews every candidate from this ingest.
+        all_contradictions = await cs.arbitrate_and_persist(db, project_id, candidates, llm)
 
     await db.commit()
 

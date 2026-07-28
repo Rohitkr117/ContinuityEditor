@@ -44,7 +44,10 @@ class ContradictionOut(BaseModel):
     value_b: str
     quote_a: Optional[str]
     quote_b: Optional[str]
+    reason: Optional[str] = None
     severity: Severity
+    confidence: float = 0.5
+    verdict: str = "CONFIRM"
     chapter_a_id: int
     chapter_b_id: int
     chapter_a_number: Optional[int] = None

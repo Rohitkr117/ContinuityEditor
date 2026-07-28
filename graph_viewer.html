@@ -172,19 +172,43 @@
   }
   .c-card.HARD { border-left: 3px solid #f87171; }
   .c-card.SOFT { border-left: 3px solid #f59e0b; }
+  .c-card.is-rejected { opacity: 0.55; border-left-style: dashed; }
+  .c-card.is-rejected:hover { opacity: 0.9; }
   .c-badge {
     font-size: 10px; font-weight: bold; padding: 2px 7px; border-radius: 3px;
     flex-shrink: 0; margin-top: 2px;
   }
   .c-badge.HARD { background: #f871711a; color: #f87171; border: 1px solid #f87171; }
   .c-badge.SOFT { background: #f59e0b1a; color: #f59e0b; border: 1px solid #f59e0b; }
+  .c-verdict {
+    font-size: 9px; font-weight: bold; padding: 2px 7px; border-radius: 3px;
+    letter-spacing: 0.5px; margin-left: 6px; vertical-align: middle;
+  }
+  .c-verdict.CONFIRM { background: #34d3991a; color: #34d399; border: 1px solid #34d399; }
+  .c-verdict.REJECT { background: #6b72801a; color: #9096ac; border: 1px solid #4a4f66; }
+  .c-conf-row { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+  .c-conf-label-txt { font-size: 10px; color: #555; flex-shrink: 0; }
+  .c-summary { max-width: 100%; font-size: 11px; color: #666; margin-bottom: 12px; display: flex; gap: 14px; }
+  .c-summary .n-confirm { color: #34d399; }
+  .c-summary .n-reject { color: #9096ac; }
   .c-body { flex: 1; }
+  .c-entity { font-size: 11px; color: #555; margin-bottom: 5px; }
+  .c-entity strong { color: #9aa5fa; }
   .c-field { font-size: 13px; color: #e0e0e0; margin-bottom: 4px; }
   .c-field strong { color: #7c8cf8; }
   .c-values { font-size: 12px; color: #888; }
   .c-values .val-a { color: #34d399; }
   .c-values .val-b { color: #f87171; }
-  .c-meta { font-size: 11px; color: #444; margin-top: 4px; }
+  .c-evidence {
+    margin-top: 7px; border-left: 2px solid; padding: 4px 10px;
+    font-size: 11px; border-radius: 0 4px 4px 0;
+    background: #0f111799; line-height: 1.5;
+  }
+  .c-evidence.ev-a { border-color: #34d399; color: #34d399cc; }
+  .c-evidence.ev-b { border-color: #f87171; color: #f87171cc; }
+  .c-evidence .ev-label { font-size: 10px; opacity: 0.65; margin-bottom: 2px; letter-spacing: 0.3px; }
+  .c-reason { font-size: 11px; color: #888; font-style: italic; margin-top: 7px; line-height: 1.5; }
+  .c-meta { font-size: 11px; color: #333; margin-top: 5px; }
   .c-resolve { background: none; border: 1px solid #2a2d3e; color: #555;
     border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 11px; font-family: monospace; }
   .c-resolve:hover { color: #aaa; border-color: #555; }
@@ -264,6 +288,9 @@
     display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px;
     background: #0f1117; border-radius: 4px; margin-bottom: 6px; font-size: 12px;
   }
+  .ing-contra-item.is-rejected { opacity: 0.55; }
+  .ing-contra-item.is-rejected:hover { opacity: 0.9; }
+  .ing-section-label { font-size: 11px; margin-bottom: 6px; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -356,10 +383,10 @@
 
         <!-- Load existing -->
         <div style="display:flex;gap:8px;align-items:center">
-          <select id="ing-existing-select" style="flex:1;background:#0f1117;border:1px solid #2a2d3e;color:#e0e0e0;padding:5px 8px;border-radius:4px;font-size:12px;font-family:monospace">
+          <select id="ing-existing-select" style="flex:1;min-width:0;background:#0f1117;border:1px solid #2a2d3e;color:#e0e0e0;padding:5px 8px;border-radius:4px;font-size:12px;font-family:monospace;overflow:hidden;text-overflow:ellipsis">
             <option value="">— pick project —</option>
           </select>
-          <button class="ing-btn" onclick="loadExistingProject()" style="padding:5px 10px">Load</button>
+          <button class="ing-btn" onclick="loadExistingProject()" style="padding:5px 10px;flex-shrink:0">Load</button>
         </div>
       </div>
 
@@ -424,10 +451,17 @@
           <div class="ent-tags" id="ing-res-entities"></div>
 
           <div id="ing-res-contra-wrap" style="display:none">
-            <div style="font-size:11px;color:#f87171;margin-bottom:6px;margin-top:10px">
-              ⚠ Contradictions detected
+            <div class="ing-section-label" style="color:#f87171">
+              ⚠ Contradictions confirmed
             </div>
             <div class="ing-contra" id="ing-res-contras"></div>
+          </div>
+
+          <div id="ing-res-rejected-wrap" style="display:none">
+            <div class="ing-section-label" style="color:#9096ac">
+              Candidates considered &amp; dismissed by judge
+            </div>
+            <div class="ing-contra" id="ing-res-rejected"></div>
           </div>
 
           <div id="ing-res-no-contra" style="font-size:11px;color:#34d399;margin-top:8px;display:none">
@@ -448,6 +482,30 @@ const COLORS = {
 
 const BASE = "http://localhost:8000";
 let allNodes = [], allEdges = [], allContradictions = [];
+
+// ── Shared confidence/verdict rendering helpers ─────────────────────────────────
+function confColor(pct) {
+  return pct >= 80 ? "#34d399" : pct >= 50 ? "#f59e0b" : "#f87171";
+}
+
+function confBarHtml(confidence) {
+  const pct = Math.round((confidence ?? 0) * 100);
+  const color = confColor(pct);
+  return `
+    <div class="c-conf-row">
+      <span class="c-conf-label-txt">confidence</span>
+      <div class="tl-conf-bar" style="width:70px" title="${pct}%">
+        <div class="tl-conf-fill" style="width:${pct}%;background:${color}"></div>
+      </div>
+      <span class="tl-conf-label">${pct}%</span>
+    </div>`;
+}
+
+function verdictBadgeHtml(verdict) {
+  const v = verdict === "CONFIRM" ? "CONFIRM" : "REJECT";
+  const label = v === "CONFIRM" ? "confirmed" : "rejected";
+  return `<span class="c-verdict ${v}">${label}</span>`;
+}
 let simulation, svg, g, linkSel;
 let currentTab = "graph";
 let timelineLoaded = false;
@@ -502,17 +560,29 @@ async function loadAll() {
     renderContradictions();
     applyFilter();
 
-    const badge = document.getElementById("c-count");
-    const hard = allContradictions.filter(c => c.severity === "HARD").length;
-    if (allContradictions.length > 0) {
-      badge.textContent = allContradictions.length;
-      badge.style.display = "";
-      badge.style.background = hard > 0 ? "#f87171" : "#f59e0b";
-    } else {
-      badge.style.display = "none";
-    }
+    updateContradictionsBadge();
   } catch(e) {
     alert("Could not reach server at " + BASE);
+  }
+}
+
+function updateContradictionsBadge() {
+  const badge = document.getElementById("c-count");
+  const confirmed = allContradictions.filter(c => c.verdict === "CONFIRM");
+  const rejected = allContradictions.length - confirmed.length;
+  if (confirmed.length > 0) {
+    const hard = confirmed.filter(c => c.severity === "HARD").length;
+    badge.textContent = confirmed.length;
+    badge.style.display = "";
+    badge.style.background = hard > 0 ? "#f87171" : "#f59e0b";
+    badge.title = `${confirmed.length} confirmed` + (rejected > 0 ? `, ${rejected} rejected by judge` : "");
+  } else if (rejected > 0) {
+    badge.textContent = rejected;
+    badge.style.display = "";
+    badge.style.background = "#4a4f66";
+    badge.title = `${rejected} candidate(s) considered and rejected by judge — none confirmed`;
+  } else {
+    badge.style.display = "none";
   }
 }
 
@@ -523,26 +593,61 @@ function renderContradictions() {
     return;
   }
 
-  // Sort: HARD first
-  const sorted = [...allContradictions].sort((a, b) =>
-    (a.severity === "HARD" ? 0 : 1) - (b.severity === "HARD" ? 0 : 1)
-  );
+  const confirmedCount = allContradictions.filter(c => c.verdict === "CONFIRM").length;
+  const rejectedCount = allContradictions.length - confirmedCount;
+  const summary = `<div class="c-summary">
+    <span><span class="n-confirm">${confirmedCount}</span> confirmed</span>
+    <span><span class="n-reject">${rejectedCount}</span> rejected by judge (shown dimmed below)</span>
+  </div>`;
 
-  list.innerHTML = sorted.map(c => `
-    <div class="c-card ${c.severity}" id="ccard-${c.id}">
+  // Sort: CONFIRMed first, then HARD before SOFT within each group
+  const sorted = [...allContradictions].sort((a, b) => {
+    const verdictOrder = (c => c.verdict === "CONFIRM" ? 0 : 1);
+    if (verdictOrder(a) !== verdictOrder(b)) return verdictOrder(a) - verdictOrder(b);
+    return (a.severity === "HARD" ? 0 : 1) - (b.severity === "HARD" ? 0 : 1);
+  });
+
+  // Build entity lookup from allNodes
+  const entityMap = Object.fromEntries((allNodes || []).map(n => [n.id, n]));
+
+  list.innerHTML = summary + sorted.map(c => {
+    const ent = entityMap[c.entity_id];
+    const entLine = ent
+      ? `<div class="c-entity">Entity: <strong>${ent.label}</strong> <span style="color:#3a3d5e">(${ent.entity_type})</span></div>`
+      : '';
+
+    const chA = c.chapter_a_number ?? c.chapter_a_id;
+    const chB = c.chapter_b_number ?? c.chapter_b_id;
+    const isRejected = c.verdict !== "CONFIRM";
+
+    const evA = c.quote_a
+      ? `<div class="c-evidence ev-a"><div class="ev-label">Ch.${chA} evidence</div>"${c.quote_a}"</div>`
+      : '';
+    const evB = c.quote_b
+      ? `<div class="c-evidence ev-b"><div class="ev-label">Ch.${chB} evidence</div>"${c.quote_b}"</div>`
+      : '';
+    const reason = c.reason
+      ? `<div class="c-reason">${c.reason}</div>`
+      : '';
+
+    return `
+    <div class="c-card ${c.severity}${isRejected ? ' is-rejected' : ''}" id="ccard-${c.id}">
       <div class="c-badge ${c.severity}">${c.severity}</div>
       <div class="c-body">
-        <div class="c-field">Field: <strong>${c.field}</strong></div>
+        ${entLine}
+        <div class="c-field">Field: <strong>${c.field}</strong> ${verdictBadgeHtml(c.verdict)}</div>
         <div class="c-values">
-          Ch.${c.chapter_a_number ?? c.chapter_a_id}: <span class="val-a">"${c.value_a}"</span>
+          Ch.${chA}: <span class="val-a">"${c.value_a}"</span>
           &nbsp;&rarr;&nbsp;
-          Ch.${c.chapter_b_number ?? c.chapter_b_id}: <span class="val-b">"${c.value_b}"</span>
+          Ch.${chB}: <span class="val-b">"${c.value_b}"</span>
         </div>
-        <div class="c-meta">contradiction #${c.id} &nbsp;|&nbsp; entity id: ${c.entity_id ?? "?"}</div>
+        ${confBarHtml(c.confidence)}
+        ${evA}${evB}${reason}
+        <div class="c-meta">contradiction #${c.id}</div>
       </div>
       <button class="c-resolve" onclick="resolve(${c.id})">Mark resolved</button>
-    </div>
-  `).join("");
+    </div>`;
+  }).join("");
 }
 
 async function resolve(id) {
@@ -653,14 +758,20 @@ function showInfo(d) {
     .map(([k, v]) => `<span class="attr"><span>${k}:</span> ${typeof v === "object" ? JSON.stringify(v) : v}</span>`)
     .join("");
 
-  // Show related contradictions inline
+  // Show related contradictions inline (both confirmed and judge-rejected)
   const related = allContradictions.filter(c => c.entity_id === d.id);
   const cHtml = related.length ? `
     <div style="margin-top:8px;border-top:1px solid #2a2d3e;padding-top:6px">
-      <span style="color:#f87171;font-size:11px">${related.length} contradiction(s):</span>
-      ${related.map(c => `<span class="attr" style="border-color:${c.severity==='HARD'?'#f87171':'#f59e0b'}">
-        <span style="color:${c.severity==='HARD'?'#f87171':'#f59e0b'}">${c.field}:</span>
-        "${c.value_a}" vs "${c.value_b}"</span>`).join("")}
+      <span style="color:#f87171;font-size:11px">${related.length} candidate(s) considered:</span>
+      ${related.map(c => {
+        const color = c.severity === 'HARD' ? '#f87171' : '#f59e0b';
+        const rejected = c.verdict !== 'CONFIRM';
+        const pct = Math.round((c.confidence ?? 0) * 100);
+        return `<span class="attr" style="border-color:${color};${rejected ? 'opacity:0.55' : ''}">
+          <span style="color:${color}">${c.field}:</span>
+          "${c.value_a}" vs "${c.value_b}" ${verdictBadgeHtml(c.verdict)}
+          <span style="color:#555;font-size:10px"> ${pct}%</span></span>`;
+      }).join("")}
     </div>` : "";
 
   document.getElementById("info").innerHTML =
@@ -905,12 +1016,7 @@ async function ingestChapter() {
       .then(r => r.json()).then(d => {
         allContradictions = d.contradictions || [];
         renderContradictions();
-        const badge = document.getElementById("c-count");
-        const hard = allContradictions.filter(c => c.severity === "HARD").length;
-        if (allContradictions.length > 0) {
-          badge.textContent = allContradictions.length; badge.style.display = "";
-          badge.style.background = hard > 0 ? "#f87171" : "#f59e0b";
-        } else { badge.style.display = "none"; }
+        updateContradictionsBadge();
       });
   } catch(e) {
     setIngStatus("Could not reach server.", "err");
@@ -948,27 +1054,46 @@ function renderIngestResult(data) {
     }).join("");
   }
 
-  // Contradictions
-  const contras = data.contradictions_found;
-  if (contras.length > 0) {
-    document.getElementById("ing-res-contra-wrap").style.display = "";
-    document.getElementById("ing-res-no-contra").style.display = "none";
-    document.getElementById("ing-res-contras").innerHTML = contras.map(c => `
-      <div class="ing-contra-item">
-        <span class="c-badge ${c.severity}" style="flex-shrink:0">${c.severity}</span>
-        <div>
-          <div style="color:#e0e0e0;margin-bottom:2px"><strong style="color:#7c8cf8">${c.field}</strong></div>
-          <div style="color:#888;font-size:11px">
-            Ch.${c.chapter_a_number ?? c.chapter_a_id}: <span style="color:#34d399">"${c.value_a}"</span>
-            &nbsp;→&nbsp;
-            Ch.${c.chapter_b_number ?? c.chapter_b_id}: <span style="color:#f87171">"${c.value_b}"</span>
-          </div>
+  // Contradictions — split into confirmed vs judge-rejected candidates
+  const all = data.contradictions_found;
+  const confirmed = all.filter(c => c.verdict === "CONFIRM");
+  const rejected = all.filter(c => c.verdict !== "CONFIRM");
+
+  const renderItem = (c, isRejected) => {
+    const evA = c.quote_a ? `<div class="c-evidence ev-a" style="margin-top:5px"><div class="ev-label">Ch.${c.chapter_a_number ?? c.chapter_a_id} evidence</div>"${c.quote_a}"</div>` : '';
+    const evB = c.quote_b ? `<div class="c-evidence ev-b" style="margin-top:4px"><div class="ev-label">Ch.${c.chapter_b_number ?? c.chapter_b_id} evidence</div>"${c.quote_b}"</div>` : '';
+    const reason = c.reason ? `<div class="c-reason" style="margin-top:5px;color:#aaa;font-style:italic;font-size:11px">${c.reason}</div>` : '';
+    return `
+    <div class="ing-contra-item${isRejected ? ' is-rejected' : ''}">
+      <span class="c-badge ${c.severity}" style="flex-shrink:0">${c.severity}</span>
+      <div style="flex:1;min-width:0">
+        <div style="color:#e0e0e0;margin-bottom:2px"><strong style="color:#7c8cf8">${c.field}</strong> ${verdictBadgeHtml(c.verdict)}</div>
+        <div style="color:#888;font-size:11px">
+          Ch.${c.chapter_a_number ?? c.chapter_a_id}: <span style="color:#34d399">"${c.value_a}"</span>
+          &nbsp;→&nbsp;
+          Ch.${c.chapter_b_number ?? c.chapter_b_id}: <span style="color:#f87171">"${c.value_b}"</span>
         </div>
-      </div>`).join("");
+        ${confBarHtml(c.confidence)}
+        ${evA}${evB}${reason}
+      </div>
+    </div>`;
+  };
+
+  if (confirmed.length > 0) {
+    document.getElementById("ing-res-contra-wrap").style.display = "";
+    document.getElementById("ing-res-contras").innerHTML = confirmed.map(c => renderItem(c, false)).join("");
   } else {
     document.getElementById("ing-res-contra-wrap").style.display = "none";
-    document.getElementById("ing-res-no-contra").style.display = "";
   }
+
+  if (rejected.length > 0) {
+    document.getElementById("ing-res-rejected-wrap").style.display = "";
+    document.getElementById("ing-res-rejected").innerHTML = rejected.map(c => renderItem(c, true)).join("");
+  } else {
+    document.getElementById("ing-res-rejected-wrap").style.display = "none";
+  }
+
+  document.getElementById("ing-res-no-contra").style.display = all.length === 0 ? "" : "none";
 }
 
 window.addEventListener("resize", () => applyFilter());

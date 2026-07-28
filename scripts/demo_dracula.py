@@ -7,7 +7,10 @@ Requires: server running at http://localhost:8000
 """
 import httpx
 import json
+import sys
 import time
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 BASE = "http://localhost:8000"
 
@@ -22,7 +25,7 @@ CHAPTERS = [
      """Jonathan arrives at Castle Dracula. The Count greets him — a tall old man, clean-shaven
      save for a long white moustache, clad in black from head to foot. The Count's eyes are red,
      his hands cold as ice. Jonathan notices the castle has no mirrors. He begins to feel uneasy.
-     Mina, Jonathan's fiancée, has blue eyes and golden hair — he misses her terribly."""),
+     Mina, Jonathan's fiancée, has brown eyes and golden hair — he misses her terribly."""),
 
     (3, "Jonathan Harker's Journal (continued)",
      """Jonathan discovers he is a prisoner. The Count's three female vampires nearly attack him.

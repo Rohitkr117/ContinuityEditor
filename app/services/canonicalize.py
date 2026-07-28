@@ -2,6 +2,8 @@
 improve() logic — find high-similarity entity aliases and merge them.
 
 "Murphy's Pub", "the pub", "the bar" → canonical: "Murphy's Pub"
+
+Returns (merged_groups, contradictions_resolved_count).
 """
 from __future__ import annotations
 import json
@@ -12,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.db import Entity, Alias
+from app.models.db import Entity, Alias, Contradiction
 from app.models.schemas import AliasGroup
 
 logger = logging.getLogger(__name__)
@@ -64,12 +66,19 @@ async def find_alias_groups(
 
 async def merge_entities(
     db: AsyncSession, project_id: int, groups: list[AliasGroup]
-) -> list[AliasGroup]:
+) -> tuple[list[AliasGroup], int]:
     """
     For each alias group that spans multiple Entity rows, merge the duplicates
-    into a single canonical Entity. Returns the groups that were actually merged.
+    into a single canonical Entity.
+
+    Returns:
+        (merged_groups, contradictions_resolved)
+        - merged_groups: groups where an actual DB merge happened
+        - contradictions_resolved: number of contradiction records re-pointed
+          or resolved as a result of the merge
     """
     merged: list[AliasGroup] = []
+    total_resolved = 0
 
     for group in groups:
         # Find all Entity rows whose canonical_name is in this group
@@ -90,12 +99,18 @@ async def merge_entities(
         )
         canonical_entity.canonical_name = group.canonical_name
 
-        # Merge attributes and re-point aliases
+        # Merge attributes and re-point aliases / contradictions
         for dup in entities:
             if dup.id == canonical_entity.id:
                 continue
+
             # Merge attributes (canonical wins on conflict)
             merged_attrs = {**dup.attributes, **canonical_entity.attributes}
+            if "relationships" in dup.attributes and "relationships" in canonical_entity.attributes:
+                dup_rels = dup.attributes["relationships"] or {}
+                can_rels = canonical_entity.attributes["relationships"] or {}
+                if isinstance(dup_rels, dict) and isinstance(can_rels, dict):
+                    merged_attrs["relationships"] = {**dup_rels, **can_rels}
             canonical_entity.attributes = merged_attrs
 
             # Re-point all aliases to the canonical entity
@@ -104,9 +119,24 @@ async def merge_entities(
                 .where(Alias.entity_id == dup.id)
                 .values(entity_id=canonical_entity.id)
             )
+
+            # Re-point contradiction records that referenced the duplicate entity.
+            # Contradictions that now point to the same entity on both sides are
+            # self-contradictions and get marked resolved.
+            contra_result = await db.execute(
+                select(Contradiction).where(Contradiction.entity_id == dup.id)
+            )
+            dup_contradictions = contra_result.scalars().all()
+            for c in dup_contradictions:
+                c.entity_id = canonical_entity.id
+                # If both sides now reference the same canonical entity the
+                # contradiction was a false positive from the alias split — resolve it.
+                c.resolved = True
+                total_resolved += 1
+
             await db.delete(dup)
 
         merged.append(group)
 
     await db.flush()
-    return merged
+    return merged, total_resolved

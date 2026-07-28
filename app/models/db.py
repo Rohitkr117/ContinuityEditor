@@ -105,7 +105,13 @@ class Contradiction(Base):
     value_b: Mapped[str] = mapped_column(Text)             # value in chapter_b
     quote_a: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     quote_b: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     severity: Mapped[Severity] = mapped_column(SAEnum(Severity), default=Severity.SOFT)
+    # Final arbiter's self-assessed confidence (0.0-1.0) in its CONFIRM/REJECT verdict.
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    # "CONFIRM" or "REJECT" — every candidate the proposer/judge pipeline considers is
+    # persisted, pass or reject, so the pipeline's reasoning stays inspectable.
+    verdict: Mapped[str] = mapped_column(String(16), default="CONFIRM")
     resolved: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

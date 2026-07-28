@@ -46,7 +46,7 @@ async def improve(
         )
 
     candidate_groups = await find_alias_groups(llm, list(names))
-    merged_groups = await merge_entities(db, project_id, candidate_groups)
+    merged_groups, contradictions_resolved = await merge_entities(db, project_id, candidate_groups)
 
     new_contradictions_result = await db.execute(
         select(Contradiction).where(
@@ -60,6 +60,6 @@ async def improve(
 
     return ImproveResponse(
         alias_groups_merged=merged_groups,
-        contradictions_resolved=0,
+        contradictions_resolved=contradictions_resolved,
         contradictions_new=[ContradictionOut.model_validate(c) for c in new_contradictions],
     )
