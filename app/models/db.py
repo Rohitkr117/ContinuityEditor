@@ -4,7 +4,7 @@ import json
 
 from sqlalchemy import (
     String, Integer, Text, DateTime, Boolean, Float,
-    ForeignKey, Enum as SAEnum, func,
+    ForeignKey, Enum as SAEnum, UniqueConstraint, func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 import enum
@@ -39,6 +39,10 @@ class Project(Base):
     chapters: Mapped[list["Chapter"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     entities: Mapped[list["Entity"]] = relationship(back_populates="project", cascade="all, delete-orphan")
     contradictions: Mapped[list["Contradiction"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    document_sync_states: Mapped[list["DocumentSyncState"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
 
 
 class Chapter(Base):
@@ -50,6 +54,9 @@ class Chapter(Base):
     title: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     raw_text: Mapped[str] = mapped_column(Text)
     cognee_dataset_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    source_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    external_document_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     ingested_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     project: Mapped["Project"] = relationship(back_populates="chapters")
@@ -109,10 +116,38 @@ class Contradiction(Base):
     severity: Mapped[Severity] = mapped_column(SAEnum(Severity), default=Severity.SOFT)
     # Final arbiter's self-assessed confidence (0.0-1.0) in its CONFIRM/REJECT verdict.
     confidence: Mapped[float] = mapped_column(Float, default=0.5)
-    # "CONFIRM" or "REJECT" — every candidate the proposer/judge pipeline considers is
+    # "CONFIRM" or "REJECT" - every candidate the proposer/judge pipeline considers is
     # persisted, pass or reject, so the pipeline's reasoning stays inspectable.
     verdict: Mapped[str] = mapped_column(String(16), default="CONFIRM")
     resolved: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     project: Mapped["Project"] = relationship(back_populates="contradictions")
+
+
+class DocumentSyncState(Base):
+    __tablename__ = "document_sync_states"
+    __table_args__ = (
+        UniqueConstraint("project_id", "document_id", name="uq_document_sync_project_document"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    document_id: Mapped[str] = mapped_column(String(256))
+    document_title: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    last_synced_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_synced_revision: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    last_synced_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_checked_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_checked_revision: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    last_issue_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_sync_strategy: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    synced_segment_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    project: Mapped["Project"] = relationship(back_populates="document_sync_states")

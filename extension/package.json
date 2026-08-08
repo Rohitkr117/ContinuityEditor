@@ -1,0 +1,5 @@
+{
+  "name": "continuity-editor-extension",
+  "private": true,
+  "type": "module"
+}

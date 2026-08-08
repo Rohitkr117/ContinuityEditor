@@ -1,20 +1,19 @@
 import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 from dotenv import load_dotenv
-
-# Load .env BEFORE importing cognee — it reads DATA_ROOT_DIRECTORY and
-# COGNEE_LOGS_DIR at module import time, so they must be in os.environ first.
-load_dotenv(Path(__file__).parent.parent / ".env")
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+# Load .env before importing cognee - it reads DATA_ROOT_DIRECTORY and
+# COGNEE_LOGS_DIR at module import time, so they must be in os.environ first.
+load_dotenv(Path(__file__).parent.parent / ".env")
+
 from app.config import settings
 from app.dependencies import init_db
-from app.routers import projects, chapters, recall, improve, graph
+from app.routers import chapters, extension, graph, improve, projects, recall
 from app.services.cognee_service import setup_cognee
 
 logging.basicConfig(level=settings.log_level)
@@ -34,12 +33,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# FastAPI itself has no timeout — set it on uvicorn via --timeout-keep-alive
-# and on the httpx clients that call this API (see demo_dracula.py).
-
+cors_origin_regex = settings.cors_extension_origin_regex if settings.cors_allow_extension_regex else None
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_allowed_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -49,6 +47,7 @@ app.include_router(chapters.router)
 app.include_router(recall.router)
 app.include_router(improve.router)
 app.include_router(graph.router)
+app.include_router(extension.router)
 
 
 @app.get("/viewer", include_in_schema=False)

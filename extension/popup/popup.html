@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Continuity Editor</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Google Docs Companion</p>
+        <h1>Continuity Editor</h1>
+        <p class="subcopy">Keep your manuscript memory in sync without leaving the page.</p>
+      </section>
+
+      <section class="panel status-panel">
+        <div class="status-row">
+          <span class="label">Project</span>
+          <span id="projectName" class="value">Not mapped</span>
+        </div>
+        <div class="status-row">
+          <span class="label">Backend</span>
+          <span id="backendStatus" class="badge badge-muted">Checking</span>
+        </div>
+        <div class="status-row">
+          <span class="label">Document</span>
+          <span id="documentStatus" class="badge badge-muted">Unknown</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <label class="field-label" for="backendUrl">Backend URL</label>
+        <div class="input-row">
+          <input id="backendUrl" type="url" placeholder="http://localhost:8000" />
+          <button id="saveBackendButton" class="ghost-button" type="button">Save</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <label class="field-label" for="projectSelect">Map This Doc To A Project</label>
+        <select id="projectSelect"></select>
+        <div class="create-row">
+          <input id="newProjectTitle" type="text" placeholder="Create a new manuscript project" />
+          <button id="createProjectButton" class="ghost-button" type="button">Create</button>
+        </div>
+      </section>
+
+      <section class="actions">
+        <button id="syncButton" class="secondary-button" type="button">Sync Document</button>
+        <button id="openPanelButton" class="ghost-button full-width" type="button">Open Continuity Panel</button>
+      </section>
+
+      <section class="panel feedback-panel">
+        <p id="feedbackTitle" class="feedback-title">Ready</p>
+        <p id="feedbackBody" class="feedback-body">Open a Google Doc to begin.</p>
+      </section>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

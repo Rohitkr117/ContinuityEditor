@@ -1,0 +1,205 @@
+:root {
+  color-scheme: light;
+  --page: #f4ead9;
+  --panel: rgba(255, 251, 245, 0.92);
+  --ink: #2f2219;
+  --muted: #6d5d50;
+  --line: rgba(90, 63, 42, 0.12);
+  --accent: #8f3b2d;
+  --olive: #49604c;
+  --gold: #b3873e;
+  --hard: #8f3b2d;
+  --soft: #9f7336;
+  --info: #49604c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(143, 59, 45, 0.14), transparent 30%),
+    linear-gradient(180deg, #fbf6ed 0%, #f1e5d1 100%);
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.layout {
+  padding: 24px;
+  display: grid;
+  gap: 18px;
+}
+
+.masthead {
+  padding: 22px;
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(255, 250, 241, 0.96), rgba(244, 229, 199, 0.94));
+  border: 1px solid var(--line);
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+}
+
+.masthead h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.08;
+}
+
+.summary {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.meta-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.meta-card,
+.issue-card,
+.empty-card {
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.meta-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pill::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.pill-success {
+  color: var(--olive);
+  background: rgba(73, 96, 76, 0.12);
+}
+
+.pill-warning {
+  color: var(--gold);
+  background: rgba(179, 135, 62, 0.12);
+}
+
+.pill-danger {
+  color: var(--accent);
+  background: rgba(143, 59, 45, 0.12);
+}
+
+.pill-muted {
+  color: var(--muted);
+  background: rgba(109, 93, 80, 0.1);
+}
+
+.issues {
+  display: grid;
+  gap: 14px;
+}
+
+.issue-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.issue-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 6px;
+  background: var(--soft);
+}
+
+.issue-card.severity-HARD::before {
+  background: var(--hard);
+}
+
+.issue-card.severity-SOFT::before {
+  background: var(--soft);
+}
+
+.issue-card.severity-INFO::before {
+  background: var(--info);
+}
+
+.issue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.issue-title {
+  margin: 0;
+  font-size: 19px;
+}
+
+.entity {
+  margin: 0;
+  color: var(--muted);
+}
+
+.issue-body {
+  margin: 10px 0 0;
+  line-height: 1.65;
+}
+
+.evidence-block {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(84, 60, 43, 0.05);
+}
+
+.evidence-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.evidence-text,
+.source-text {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.empty-card {
+  text-align: center;
+  color: var(--muted);
+}

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Continuity Panel</title>
+    <link rel="stylesheet" href="sidebar.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="masthead">
+        <p class="eyebrow">Continuity Editor</p>
+        <h1 id="docTitle">No Google Doc selected</h1>
+        <p id="summaryText" class="summary">Open the extension popup to map your project or run a sync.</p>
+      </section>
+
+      <section class="meta-grid">
+        <article class="meta-card">
+          <span class="meta-label">Project</span>
+          <strong id="projectLabel">Not mapped</strong>
+        </article>
+        <article class="meta-card">
+          <span class="meta-label">Document State</span>
+          <strong id="syncLabel" class="pill pill-muted">Unknown</strong>
+        </article>
+      </section>
+
+      <section id="issuesContainer" class="issues"></section>
+    </main>
+
+    <script type="module" src="sidebar.js"></script>
+  </body>
+</html>

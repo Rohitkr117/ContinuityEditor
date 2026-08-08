@@ -1,19 +1,10 @@
-"""
-recall() — POST /projects/{project_id}/recall
-
-Two-layer recall:
-  1. cognee.recall() — semantic search across the project's knowledge graph
-  2. DB contradiction records — structured conflicts detected at ingest time
-
-Both results are returned so the caller gets the full picture.
-"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
-from app.models.db import Project, Entity, Contradiction, Chapter
-from app.models.schemas import RecallRequest, RecallResponse, ContradictionOut, CogneeHit
+from app.models.db import Chapter, Contradiction, Entity, Project
+from app.models.schemas import CogneeHit, ContradictionOut, RecallRequest, RecallResponse
 from app.services import cognee_service
 
 router = APIRouter(prefix="/projects/{project_id}/recall", tags=["recall"])
@@ -29,8 +20,6 @@ async def recall(
     if not project:
         raise HTTPException(404, "Project not found")
 
-    # Layer 1: cognee.recall() — semantic graph search for the focus entity/topic
-    # Results are Pydantic objects: use result.text / result.source, NOT result["text"]
     cognee_hits = []
     if body.focus:
         try:
@@ -44,9 +33,8 @@ async def recall(
                 for hit in raw_hits
             ]
         except Exception:
-            pass  # graph may not be built yet for brand-new projects
+            pass
 
-    # Layer 2: DB contradiction records
     stmt = select(Contradiction).where(
         Contradiction.project_id == project_id,
         Contradiction.resolved == False,
@@ -64,35 +52,32 @@ async def recall(
 
     if body.chapter_ids:
         stmt = stmt.where(
-            (Contradiction.chapter_a_id.in_(body.chapter_ids)) |
-            (Contradiction.chapter_b_id.in_(body.chapter_ids))
+            (Contradiction.chapter_a_id.in_(body.chapter_ids))
+            | (Contradiction.chapter_b_id.in_(body.chapter_ids))
         )
 
     result = await db.execute(stmt.order_by(Contradiction.created_at.desc()))
     contradictions = result.scalars().all()
 
-    # Scope metadata
-    chapters_result = await db.execute(
-        select(Chapter).where(Chapter.project_id == project_id)
-    )
+    chapters_result = await db.execute(select(Chapter).where(Chapter.project_id == project_id))
     chapters = chapters_result.scalars().all()
-    ch_num = {c.id: c.number for c in chapters}
+    chapter_numbers = {chapter.id: chapter.number for chapter in chapters}
 
-    entities_result = await db.execute(
-        select(Entity).where(Entity.project_id == project_id)
-    )
+    entities_result = await db.execute(select(Entity).where(Entity.project_id == project_id))
     entities = entities_result.scalars().all()
+    entity_names = {entity.id: entity.canonical_name for entity in entities}
 
-    def enrich(c: Contradiction) -> ContradictionOut:
-        out = ContradictionOut.model_validate(c)
-        out.chapter_a_number = ch_num.get(c.chapter_a_id)
-        out.chapter_b_number = ch_num.get(c.chapter_b_id)
+    def enrich(contradiction: Contradiction) -> ContradictionOut:
+        out = ContradictionOut.model_validate(contradiction)
+        out.chapter_a_number = chapter_numbers.get(contradiction.chapter_a_id)
+        out.chapter_b_number = chapter_numbers.get(contradiction.chapter_b_id)
+        out.entity_name = entity_names.get(contradiction.entity_id)
         return out
 
     return RecallResponse(
-        contradictions=[enrich(c) for c in contradictions],
+        contradictions=[enrich(item) for item in contradictions],
         cognee_hits=cognee_hits,
-        checked_chapters=len(body.chapter_ids or [c.id for c in chapters]),
+        checked_chapters=len(body.chapter_ids or [chapter.id for chapter in chapters]),
         checked_entities=len(entities),
     )
 
@@ -103,10 +88,9 @@ async def resolve_contradiction(
     contradiction_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """Mark a contradiction as intentional / resolved by the author."""
-    c = await db.get(Contradiction, contradiction_id)
-    if not c or c.project_id != project_id:
+    contradiction = await db.get(Contradiction, contradiction_id)
+    if not contradiction or contradiction.project_id != project_id:
         raise HTTPException(404, "Contradiction not found")
-    c.resolved = True
+    contradiction.resolved = True
     await db.commit()
     return {"id": contradiction_id, "resolved": True}

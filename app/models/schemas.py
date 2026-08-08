@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any, Optional
+
 from pydantic import BaseModel
+
 from app.models.db import EntityType, Severity
 
-
-# ── Projects ──────────────────────────────────────────────────────────────────
 
 class ProjectCreate(BaseModel):
     title: str
@@ -21,8 +22,6 @@ class ProjectOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Chapters ──────────────────────────────────────────────────────────────────
-
 class ChapterIngest(BaseModel):
     number: int
     title: Optional[str] = None
@@ -34,7 +33,7 @@ class EntityExtracted(BaseModel):
     entity_type: EntityType
     aliases: list[str] = []
     attributes: dict[str, Any] = {}
-    resolves_to: str | None = None  # set by LLM when entity matches an existing known entity
+    resolves_to: str | None = None
 
 
 class ContradictionOut(BaseModel):
@@ -53,6 +52,7 @@ class ContradictionOut(BaseModel):
     chapter_a_number: Optional[int] = None
     chapter_b_number: Optional[int] = None
     entity_id: Optional[int]
+    entity_name: Optional[str] = None
     resolved: bool
     created_at: datetime
 
@@ -76,28 +76,23 @@ class ChapterOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Recall ────────────────────────────────────────────────────────────────────
-
 class CogneeHit(BaseModel):
-    """One RecallResponse item from cognee.recall() — Pydantic object, accessed via .text etc."""
     text: Optional[str] = None
-    source: Optional[str] = None     # "graph" | "session" | "trace" | "graph_context"
+    source: Optional[str] = None
     score: Optional[float] = None
 
 
 class RecallRequest(BaseModel):
-    focus: Optional[str] = None          # entity name to narrow check
-    chapter_ids: Optional[list[int]] = None  # specific chapters; None = all
+    focus: Optional[str] = None
+    chapter_ids: Optional[list[int]] = None
 
 
 class RecallResponse(BaseModel):
     contradictions: list[ContradictionOut]
-    cognee_hits: list[CogneeHit]          # raw graph retrieval results from cognee.recall()
+    cognee_hits: list[CogneeHit]
     checked_chapters: int
     checked_entities: int
 
-
-# ── Improve ───────────────────────────────────────────────────────────────────
 
 class AliasGroup(BaseModel):
     canonical_name: str
@@ -110,8 +105,6 @@ class ImproveResponse(BaseModel):
     contradictions_resolved: int
     contradictions_new: list[ContradictionOut]
 
-
-# ── Graph ─────────────────────────────────────────────────────────────────────
 
 class GraphNode(BaseModel):
     id: int
@@ -132,8 +125,6 @@ class GraphResponse(BaseModel):
     edges: list[GraphEdge]
 
 
-# ── Timeline ──────────────────────────────────────────────────────────────────
-
 class TimelineEvent(BaseModel):
     entity_id: Optional[int]
     description: str
@@ -146,3 +137,69 @@ class TimelineEvent(BaseModel):
 class TimelineResponse(BaseModel):
     events: list[TimelineEvent]
     gaps_detected: list[str]
+
+
+class ExtensionStatusResponse(BaseModel):
+    project_id: int
+    project_title: str
+    document_id: str
+    document_title: Optional[str] = None
+    sync_state: str
+    has_synced_content: bool
+    last_synced_hash: Optional[str] = None
+    last_synced_revision: Optional[str] = None
+    last_synced_at: Optional[datetime] = None
+    last_checked_hash: Optional[str] = None
+    last_checked_revision: Optional[str] = None
+    last_issue_count: int = 0
+    synced_segment_count: int = 0
+
+
+class ExtensionDocumentRequest(BaseModel):
+    document_id: str
+    document_title: Optional[str] = None
+    document_text: str
+    document_revision: Optional[str] = None
+
+
+class ExtensionIssue(BaseModel):
+    issue_type: str
+    severity: str
+    affected_entity: str
+    explanation: str
+    current_text_evidence: Optional[str] = None
+    previous_manuscript_evidence: Optional[str] = None
+    source_context: Optional[str] = None
+    field: Optional[str] = None
+    confidence: float = 0.0
+    verdict: str = "CONFIRM"
+
+
+class ExtensionCheckResponse(BaseModel):
+    project_id: int
+    document_id: str
+    document_title: Optional[str] = None
+    sync_state: str
+    analysis_mode: str
+    has_changes: bool
+    message: str
+    issues: list[ExtensionIssue]
+    issue_count: int
+    current_hash: str
+    current_revision: Optional[str] = None
+    previous_synced_hash: Optional[str] = None
+    previous_synced_revision: Optional[str] = None
+
+
+class ExtensionSyncResponse(BaseModel):
+    project_id: int
+    document_id: str
+    document_title: Optional[str] = None
+    sync_state: str
+    sync_strategy: str
+    message: str
+    current_hash: str
+    current_revision: Optional[str] = None
+    previous_synced_hash: Optional[str] = None
+    synced_segment_count: int = 0
+    chapters_created: list[int] = []

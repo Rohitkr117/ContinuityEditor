@@ -128,6 +128,41 @@ that triggered the flag.
 
 ---
 
+## Google Docs Chrome Extension
+
+Continuity Editor includes a Chrome Extension that acts as a client for writers directly within Google Docs. It allows you to analyze newly written text against the previously synced knowledge graph of your manuscript.
+
+### Architecture
+- **extension/manifest.json**: Manifest V3 configuration.
+- **extension/background.js**: Service worker handling tab events and side panel toggling.
+- **extension/content.js**: Injected into Google Docs to extract document IDs and titles.
+- **extension/lib/**: Reusable JS logic, including OAuth flow, Docs JSON parsing, and state derivation.
+- **extension/popup/** & **extension/sidebar/**: UI components built with HTML, CSS, and Vanilla JS.
+
+### Extension Setup
+The extension reads your Google Docs natively via the browser's own export feature, meaning **no OAuth or Google Cloud configuration is required!** All you need to do is load the extension.
+
+### Loading the Extension in Chrome
+1. Open Chrome and go to `chrome://extensions/`.
+2. Enable **Developer Mode** in the top right.
+3. Click **Load unpacked** and select the `continuity-editor/extension/` directory.
+
+### Backend Setup
+Ensure the backend is running locally or deployed.
+1. Start the backend: `uvicorn app.main:app --reload`
+2. Open the extension popup, enter your backend URL (e.g., `http://localhost:8000`), and click **Save**.
+
+### Usage
+- **Map to Project**: Open a Google Doc. In the extension popup, select an existing ContinuityEditor project or create a new one.
+- **Sync Document**: Sends your current manuscript content to the backend. The text is saved into the vector store and the knowledge graph. *Use this when you are happy with the content and want it established as permanent context.*
+- **Check Continuity**: Compares the latest unsynced changes in your document against the established knowledge graph. Any found contradictions will be displayed in the **Continuity Panel** (sidebar). *This does NOT permanently save the new content to memory.*
+
+### Troubleshooting
+- **Backend Offline**: Ensure FastAPI is running and CORS is configured (handled automatically by `app/main.py`).
+- **OAuth Errors**: Ensure your Chrome browser profile matches the Google Cloud project test users if the OAuth app is not published.
+
+---
+
 ## Demo Scripts
 
 ```bash
